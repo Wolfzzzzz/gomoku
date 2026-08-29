@@ -6,8 +6,7 @@
 # macOS 元数据
 .DS_Store
 
-# 手动组装的应用包（通过 GitHub Release 分发，不进源码库）
-Gomoku.app/
+# 已编译的 Gomoku.app 一并纳入版本库，便于直接下载运行
 
 # 编辑器
 *.xcworkspace/xcuserdata/
