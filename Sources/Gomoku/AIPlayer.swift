@@ -124,6 +124,17 @@ struct AIPlayer {
         return ends
     }
 
+    // 对方「落子后即成冲四/活四」的高威胁点（含缺口眠三、活三端、冲四延伸）。
+    // 这类点不预堵 → 对方下回合成形冲四/活四，局势急转直下。用于提前拆线。
+    static func rivalHighThreats(_ stones: [Coord: Player], rival: Player) -> Set<Coord> {
+        var pts = Set<Coord>()
+        for c in candidatePoints(stones) where stones[c] == nil {
+            var s = stones; s[c] = rival
+            if lineScore(s, at: c, by: rival) >= 10_000 { pts.insert(c) }
+        }
+        return pts
+    }
+
     // 极小极大（含 alpha-beta 剪枝）。顶层调 depth:1 表示"看对方下一步最佳应手"
     static func minimax(_ stones: [Coord: Player], depth: Int, alpha: Int, beta: Int,
                         ai: Player, maximizing: Bool, threatAware: Bool = false) -> Int {
@@ -215,25 +226,26 @@ struct AIPlayer {
             return cands.randomElement()
 
         case .medium:
-            // 中等：启发式评分 + 看对方一步（原实现，保持干脆利落）
-            return search(stones: stones, ai: ai, depth: 1, topN: 12, doubleThreatFirst: false)
+            // 中等：启发式评分 + 看对方一步 + 堵已成活三（不预堵缺口，保持原阶梯强度）
+            return search(stones: stones, ai: ai, depth: 1, topN: 12, doubleThreatFirst: false,
+                          alwaysBlock: true)
 
         case .hard:
-            // 困难：双威胁识别 + 对方活三硬堵 + 深度 3 搜索（带活四感知）
+            // 困难：双威胁识别 + 对方活三硬堵 + 缺口预堵 + 深度 3 搜索（带活四感知）
             return search(stones: stones, ai: ai, depth: 3, topN: 10, doubleThreatFirst: true,
-                          alwaysBlock: true, threatAware: true)
+                          alwaysBlock: true, blockGaps: true, threatAware: true)
 
         case .unbeatable:
-            // 超级难：必胜/必堵/双威胁/活三硬堵优先级 + 深度 3 宽搜索
+            // 超级难：必胜/必堵/双威胁/活三硬堵/缺口预堵 + 深度 3 宽搜索
             return search(stones: stones, ai: ai, depth: 3, topN: 14, doubleThreatFirst: true,
-                          alwaysBlock: true, threatAware: true)
+                          alwaysBlock: true, blockGaps: true, threatAware: true)
         }
     }
 
     // 通用搜索：优先级 = 己方五连 → 堵对方五连 → 己方双威胁 → 堵对方活三 → minimax
     static func search(stones: [Coord: Player], ai: Player, depth: Int, topN: Int,
                        doubleThreatFirst: Bool, alwaysBlock: Bool = false,
-                       threatAware: Bool = false) -> Coord? {
+                       blockGaps: Bool = false, threatAware: Bool = false) -> Coord? {
         let rival = ai.next
         let cands = rankedCandidates(stones, for: ai)
 
@@ -261,11 +273,18 @@ struct AIPlayer {
                 if doubleThreat(s, at: c, by: ai) { return c }
             }
         }
-        // 4. 对方活三：若无先手棋，必须堵其开放端，否则对方成活四（无解必输）
+        // 4. 对方已成活三：必堵其开放端（否则对方成活四无解）—— 中等及以上
         if alwaysBlock {
             let ends = rivalLiveThreeEnds(stones, rival: rival)
             if !ends.isEmpty {
                 return ends.max { attackScore(stones, at: $0, by: ai) < attackScore(stones, at: $1, by: ai) }
+            }
+        }
+        // 4b. 对方高威胁点（缺口眠三/冲四延伸）预堵：提前拆线 —— 仅困难/超级难
+        if blockGaps {
+            let threats = rivalHighThreats(stones, rival: rival)
+            if !threats.isEmpty {
+                return threats.max { attackScore(stones, at: $0, by: ai) < attackScore(stones, at: $1, by: ai) }
             }
         }
         // 5. 对 Top N 候选做 minimax 深度搜索
