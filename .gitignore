@@ -1,0 +1,14 @@
+# 编译产物
+.build/
+*.swiftsymbol
+*.swiftmodule
+
+# macOS 元数据
+.DS_Store
+
+# 手动组装的应用包（通过 GitHub Release 分发，不进源码库）
+Gomoku.app/
+
+# 编辑器
+*.xcworkspace/xcuserdata/
+*.swiftpm/xcode/package.xcworkspace/xcuserdata/
